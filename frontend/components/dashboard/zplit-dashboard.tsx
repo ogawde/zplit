@@ -183,12 +183,12 @@ export function ZplitDashboard() {
             <CardHeader>
               <CardTitle>Team profiles</CardTitle>
               <CardDescription>
-                Saved split configurations will appear here in Phase 4.
+                Saved split configurations for your payout teams.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground text-sm">
-                No teams yet — you&apos;ll create reusable profiles next phase.
+                No team profiles yet. Create one to reuse split setups.
               </p>
             </CardContent>
           </Card>
@@ -199,13 +199,12 @@ export function ZplitDashboard() {
             <CardHeader>
               <CardTitle>Invoices</CardTitle>
               <CardDescription>
-                USDC invoices linked to a team will show here after Phase 5.
+                USDC invoices linked to your selected team profile.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground text-sm">
-                Nothing to show yet. Invoice creation and Blink links come in
-                later phases.
+                Nothing to show yet. Created invoices will appear here with Blink links.
               </p>
             </CardContent>
           </Card>

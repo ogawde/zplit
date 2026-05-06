@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0",
+  "actions": [
+    {
+      "name": "Pay Zplit invoice",
+      "icon": "/favicon.ico",
+      "description": "One payment. Automatic splits. Instant team payouts.",
+      "url": "/api/actions/pay-invoice/{invoiceId}"
+    }
+  ]
+}
+
