@@ -1,0 +1,8 @@
+.env
+.env.*
+*.keypair.json
+id.json
+**/id.json
+**/test-ledger/
+**/.anchor/
+personal-notes/
