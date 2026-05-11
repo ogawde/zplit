@@ -2,10 +2,12 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { PayInvoiceClient } from "@/components/pay/pay-invoice-client";
 
 type Props = {
-  params: { invoiceId: string };
+  params: Promise<{ invoiceId: string }>;
 };
 
-export default function PayInvoicePage({ params }: Props) {
+export default async function PayInvoicePage({ params }: Props) {
+  const { invoiceId } = await params;
+
   return (
     <div className="flex min-h-full flex-col">
       <SiteHeader />
@@ -18,14 +20,14 @@ export default function PayInvoicePage({ params }: Props) {
             Pay Zplit invoice
           </h1>
           <p className="break-all text-xs text-muted-foreground">
-            {params.invoiceId}
+            {invoiceId}
           </p>
         </div>
         <p className="mb-4 text-sm text-muted-foreground">
           Review invoice details and execute one-click payment with your
           connected wallet.
         </p>
-        <PayInvoiceClient invoiceId={params.invoiceId} />
+        <PayInvoiceClient invoiceId={invoiceId} />
       </main>
     </div>
   );

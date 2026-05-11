@@ -7,7 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-zplit_program = "5f19UuCzbvSCnZQtdHMv1fqghr9UjC7DvrwZ1QyhgdUH"
+zplit_program = "rMgTnbVPZKkY5xFcvQhCctohTpS3GagWQEwciLMFUSV"
 
 [programs.devnet]
 zplit_program = "rMgTnbVPZKkY5xFcvQhCctohTpS3GagWQEwciLMFUSV"
@@ -16,7 +16,7 @@ zplit_program = "rMgTnbVPZKkY5xFcvQhCctohTpS3GagWQEwciLMFUSV"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Devnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

@@ -3,7 +3,8 @@ use anchor_lang::solana_program::program_pack::Pack;
 use anchor_spl::token::{transfer_checked, Mint, Token, TokenAccount, TransferChecked};
 use anchor_spl::token::spl_token::state::Account as SplTokenAccount;
 
-declare_id!("5f19UuCzbvSCnZQtdHMv1fqghr9UjC7DvrwZ1QyhgdUH");
+// declare_id!("5f19UuCzbvSCnZQtdHMv1fqghr9UjC7DvrwZ1QyhgdUH");
+declare_id!("rMgTnbVPZKkY5xFcvQhCctohTpS3GagWQEwciLMFUSV");
 
 const MAX_TEAM_NAME_LEN: usize = 64;
 const MAX_DESCRIPTION_LEN: usize = 160;

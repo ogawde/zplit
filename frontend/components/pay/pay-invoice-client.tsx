@@ -15,7 +15,12 @@ import {
 } from "@/lib/solana/zplit-program";
 
 type Props = { invoiceId: string };
-type SplitType = Record<"percentage", object> | Record<"Percentage", object> | Record<string, never>;
+type SplitType =
+  | Record<"percentage", object>
+  | Record<"Percentage", object>
+  | Record<"fixed", object>
+  | Record<"Fixed", object>
+  | Record<string, never>;
 type InvoiceRecord = DecodedInvoice & {
   team_profile_pubkey?: PublicKey;
   due_date?: bigint;
@@ -27,7 +32,8 @@ function getFeeBps(invoice: InvoiceRecord) {
   return Number(invoice.platformFeeBps ?? invoice.platform_fee_bps ?? 0);
 }
 
-function isPercentageSplit(splitType: SplitType) {
+function isPercentageSplit(splitType: unknown) {
+  if (!splitType || typeof splitType !== "object") return false;
   return "percentage" in splitType || "Percentage" in splitType;
 }
 
@@ -53,7 +59,11 @@ function getSplitRows(invoice: InvoiceRecord, teamProfile: DecodedTeamProfile): 
   const members = teamProfile.members ?? [];
   if (!members.length) return [];
 
-  if (isPercentageSplit(teamProfile.splitType as SplitType)) {
+  const splitType =
+    (teamProfile as DecodedTeamProfile & { split_type?: SplitType }).splitType ??
+    (teamProfile as DecodedTeamProfile & { split_type?: SplitType }).split_type;
+
+  if (isPercentageSplit(splitType)) {
     const rows = members.map((member) => ({
       wallet: member.wallet.toBase58(),
       amountRaw: (distributable * BigInt(member.value)) / BigInt(10_000),
@@ -159,8 +169,8 @@ export function PayInvoiceClient({ invoiceId }: Props) {
             </div>
             <div className="space-y-2">
               <p className="text-sm font-medium">Split breakdown</p>
-              {splitRows.length ? splitRows.map((row) => (
-                <div key={row.wallet} className="flex items-center justify-between rounded-md border px-3 py-2 text-xs">
+              {splitRows.length ? splitRows.map((row, index) => (
+                <div key={`${row.wallet}-${index}`} className="flex items-center justify-between rounded-md border px-3 py-2 text-xs">
                   <span className="max-w-[70%] truncate text-muted-foreground">{row.wallet}</span>
                   <span>{asUsdc(row.amountRaw)} USDC</span>
                 </div>

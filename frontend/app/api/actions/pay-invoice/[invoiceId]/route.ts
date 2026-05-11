@@ -29,7 +29,7 @@ function corsHeaders() {
   };
 }
 
-const PLATFORM_WALLET = new PublicKey("HhHkh5p3cMPrVibPdT8xPocA6ZXWzrv2jN6xj2krfqqe");
+const PLATFORM_WALLET = new PublicKey("8vEABHXNfegBG5dVVNi7DzXL9f9fztup15Y6ttSUTM9v");
 
 function toBigInt(value: unknown) {
   if (typeof value === "bigint") return value;
@@ -180,7 +180,7 @@ export async function POST(
   const platformAta = getAssociatedTokenAddressSync(
     usdcMint,
     PLATFORM_WALLET,
-    false,
+    true,
     TOKEN_PROGRAM_ID,
   );
   const data = Buffer.from(instructionCoder.encode("pay_invoice", {}));

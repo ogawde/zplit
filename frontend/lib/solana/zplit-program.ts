@@ -2,7 +2,7 @@ import { BorshAccountsCoder, type Idl } from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 
 export const DEFAULT_ZPLIT_PROGRAM_ID =
-  "5f19UuCzbvSCnZQtdHMv1fqghr9UjC7DvrwZ1QyhgdUH";
+  "rMgTnbVPZKkY5xFcvQhCctohTpS3GagWQEwciLMFUSV";
 
 export const zplitProgramIdl: Idl = {
   address: DEFAULT_ZPLIT_PROGRAM_ID,
@@ -14,7 +14,7 @@ export const zplitProgramIdl: Idl = {
   instructions: [
     {
       name: "create_invoice",
-      discriminator: [0, 0, 0, 0, 0, 0, 0, 0],
+      discriminator: [154, 170, 31, 135, 134, 100, 156, 146],
       accounts: [
         { name: "invoice", writable: true, signer: false },
         { name: "team_profile", writable: false, signer: false },
@@ -30,7 +30,7 @@ export const zplitProgramIdl: Idl = {
     },
     {
       name: "pay_invoice",
-      discriminator: [0, 0, 0, 0, 0, 0, 0, 0],
+      discriminator: [104, 6, 62, 239, 197, 206, 208, 220],
       accounts: [
         { name: "invoice", writable: true, signer: false },
         { name: "team_profile", writable: false, signer: false },
@@ -45,11 +45,11 @@ export const zplitProgramIdl: Idl = {
   accounts: [
     {
       name: "TeamProfile",
-      discriminator: [0, 0, 0, 0, 0, 0, 0, 0],
+      discriminator: [77, 170, 207, 206, 63, 142, 104, 25],
     },
     {
       name: "Invoice",
-      discriminator: [0, 0, 0, 0, 0, 0, 0, 0],
+      discriminator: [51, 194, 250, 114, 6, 104, 18, 164],
     },
   ],
   types: [
