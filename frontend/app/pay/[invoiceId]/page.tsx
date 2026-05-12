@@ -1,4 +1,4 @@
-import { SiteHeader } from "@/components/layout/site-header";
+import { PageShell } from "@/components/layout/page-shell";
 import { PayInvoiceClient } from "@/components/pay/pay-invoice-client";
 
 type Props = {
@@ -9,27 +9,26 @@ export default async function PayInvoicePage({ params }: Props) {
   const { invoiceId } = await params;
 
   return (
-    <div className="flex min-h-full flex-col">
-      <SiteHeader />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6">
+    <PageShell contentClassName="max-w-4xl">
+      <div className="space-y-6">
         <div className="mb-6 space-y-1">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
             Invoice
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-3xl font-semibold tracking-tight">
             Pay Zplit invoice
           </h1>
-          <p className="break-all text-xs text-muted-foreground">
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Review the invoice, confirm the wallet receiving split payouts, and
+            pay in one USDC transaction.
+          </p>
+          <p className="break-all text-xs text-muted-foreground/80">
             {invoiceId}
           </p>
         </div>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Review invoice details and execute one-click payment with your
-          connected wallet.
-        </p>
         <PayInvoiceClient invoiceId={invoiceId} />
-      </main>
-    </div>
+      </div>
+    </PageShell>
   );
 }
 

@@ -4,9 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { useRouter } from "next/navigation";
+import {
+  ArrowRight,
+  BadgeCheck,
+  CreditCard,
+  ExternalLink,
+  Wallet,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   decodeInvoiceAccount,
   decodeTeamProfileAccount,
@@ -103,6 +112,19 @@ export function PayInvoiceClient({ invoiceId }: Props) {
   }, [invoice, teamProfile]);
   const invoiceStatusLabel = invoice ? getInvoiceStatusLabel(invoice) : "Unpaid";
   const hasBeenPaid = invoice ? isInvoicePaid(invoice) : false;
+  const dueDateLabel = invoice
+    ? new Date(getInvoiceDueDateUnix(invoice) * 1000).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "-";
+  const amountLabel = invoice
+    ? `${formatUsdcAmount(BigInt(invoice.amount))} USDC`
+    : "0.000000 USDC";
+  const paidByLabel = hasBeenPaid && invoice ? invoice.payer.toBase58() : null;
 
   async function handlePay() {
     if (!connected || !publicKey) return toast.error("Connect your wallet first");
@@ -138,68 +160,243 @@ export function PayInvoiceClient({ invoiceId }: Props) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Invoice details</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading invoice details...</p>
-        ) : (
-          <>
-            <div className="grid gap-2 text-sm">
-              <p><span className="text-muted-foreground">Description:</span> {invoice?.description || "-"}</p>
-              <p><span className="text-muted-foreground">Amount:</span> {invoice ? formatUsdcAmount(BigInt(invoice.amount)) : "0.000000"} USDC</p>
-              <p><span className="text-muted-foreground">Due date:</span> {invoice ? new Date(getInvoiceDueDateUnix(invoice) * 1000).toLocaleString("en-US") : "-"}</p>
-              <p><span className="text-muted-foreground">Platform fee:</span> {invoice ? (getInvoicePlatformFeeBps(invoice) / 100).toFixed(2) : "0.00"}%</p>
-              <p><span className="text-muted-foreground">Status:</span> {invoiceStatusLabel}</p>
-              {hasBeenPaid ? (
-                <p><span className="text-muted-foreground">Paid by:</span> {invoice?.payer.toBase58()}</p>
-              ) : null}
-            </div>
+    <div className="space-y-6">
+      <Card className="border-border/80">
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
-              <p className="text-sm font-medium">Split breakdown</p>
-              {splitRows.length ? splitRows.map((row, index) => (
-                <div key={`${row.wallet}-${index}`} className="flex items-center justify-between rounded-md border px-3 py-2 text-xs">
-                  <span className="max-w-[70%] truncate text-muted-foreground">{row.wallet}</span>
-                  <span>{formatUsdcAmount(row.amountRaw)} USDC</span>
-                </div>
-              )) : <p className="text-sm text-muted-foreground">No members found in team profile.</p>}
-            </div>
-            {hasBeenPaid ? (
-              <div className="rounded-md border border-primary/30 bg-primary/10 p-3 text-sm">
-                <p className="font-medium text-primary">This invoice has already been paid.</p>
-                <p className="mt-1 text-muted-foreground">
-                  Payments are disabled after the invoice reaches a paid state.
+              <Badge
+                variant={hasBeenPaid ? "success" : "warning"}
+                className="w-fit"
+              >
+                {invoiceStatusLabel}
+              </Badge>
+              <div className="space-y-1">
+                <CardTitle className="text-2xl sm:text-3xl">
+                  {invoice?.description || "Invoice payment"}
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Pay once and Zplit routes the USDC split automatically.
                 </p>
               </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Payment token</p>
-                  <div className="rounded-md border border-input bg-background px-3 py-2 text-sm">
-                    USDC
+            </div>
+            <div className="rounded-2xl border border-border/70 bg-muted/25 px-4 py-3 text-right">
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                Amount due
+              </p>
+              <p className="mt-1 text-2xl font-semibold tracking-tight">
+                {amountLabel}
+              </p>
+            </div>
+          </div>
+
+          {isLoading ? (
+            <PayInvoiceSummarySkeleton />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <InvoiceSummaryItem label="Due date" value={dueDateLabel} />
+              <InvoiceSummaryItem
+                label="Platform fee"
+                value={`${invoice ? (getInvoicePlatformFeeBps(invoice) / 100).toFixed(2) : "0.00"}%`}
+              />
+              <InvoiceSummaryItem
+                label="Payment token"
+                value={configuredUsdcMint ? "USDC" : "Not configured"}
+              />
+            </div>
+          )}
+        </CardHeader>
+      </Card>
+
+      {isLoading ? (
+        <Card className="border-border/80">
+          <CardContent className="space-y-4 pt-6">
+            <PayInvoiceDetailsSkeleton />
+          </CardContent>
+        </Card>
+      ) : !invoice || !teamProfile ? (
+        <Card className="border-border/80">
+          <CardContent className="space-y-2 pt-6">
+            <p className="text-sm font-semibold">Invoice unavailable</p>
+            <p className="text-sm text-muted-foreground">
+              We could not load the invoice details on this cluster.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <Card className="border-border/80">
+            <CardHeader>
+              <CardTitle>Split breakdown</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {splitRows.length ? (
+                splitRows.map((row, index) => (
+                  <div
+                    key={`${row.wallet}-${index}`}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/55 px-4 py-3 text-sm transition-colors hover:border-primary/25"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground">
+                        Recipient {index + 1}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {truncateAddress(row.wallet)}
+                      </p>
+                    </div>
+                    <p className="font-semibold">
+                      {formatUsdcAmount(row.amountRaw)} USDC
+                    </p>
                   </div>
-                  <p className="text-muted-foreground text-xs">
-                    This environment is configured to pay invoices in USDC automatically.
-                  </p>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No members were found in the linked team profile.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/80">
+            <CardHeader>
+              <CardTitle>Payment</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {hasBeenPaid ? (
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                  <div className="flex items-start gap-3">
+                    <BadgeCheck className="mt-0.5 size-5 text-emerald-300" />
+                    <div className="space-y-1">
+                      <p className="font-semibold text-emerald-100">
+                        This invoice has already been paid
+                      </p>
+                      <p className="text-sm text-emerald-50/80">
+                        Payments are locked after the invoice reaches a paid
+                        state.
+                      </p>
+                    </div>
+                  </div>
                 </div>
+              ) : (
+                <div className="rounded-2xl border border-border/70 bg-muted/25 p-4">
+                  <div className="flex items-start gap-3">
+                    <CreditCard className="mt-0.5 size-5 text-primary" />
+                    <div className="space-y-1">
+                      <p className="font-semibold">USDC payment</p>
+                      <p className="text-sm text-muted-foreground">
+                        The invoice is configured to pay in USDC automatically.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3 rounded-2xl border border-border/70 bg-background/55 p-4">
+                <InvoiceSummaryItem label="Status" value={invoiceStatusLabel} />
+                {paidByLabel ? (
+                  <InvoiceSummaryItem
+                    label="Paid by"
+                    value={truncateAddress(paidByLabel)}
+                  />
+                ) : null}
+                <InvoiceSummaryItem
+                  label="Wallet"
+                  value={
+                    connected && publicKey
+                      ? truncateAddress(publicKey.toBase58())
+                      : "Connect Phantom to continue"
+                  }
+                />
+              </div>
+
+              {!hasBeenPaid ? (
                 <Button
                   onClick={handlePay}
                   disabled={isPaying || isLoading || !configuredUsdcMint}
+                  size="lg"
                 >
                   {isPaying ? "Preparing transaction..." : "Pay with Phantom"}
+                  {!isPaying ? <ArrowRight className="size-4" /> : null}
                 </Button>
-                {!configuredUsdcMint ? (
-                  <p className="text-sm text-destructive">
-                    USDC mint is not configured for this environment.
-                  </p>
-                ) : null}
-              </>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+              ) : null}
+
+              {!connected ? (
+                <div className="rounded-2xl border border-border/70 bg-muted/25 p-4 text-sm text-muted-foreground">
+                  <div className="flex items-start gap-3">
+                    <Wallet className="mt-0.5 size-5 text-muted-foreground" />
+                    <p>Connect your wallet in the header before paying.</p>
+                  </div>
+                </div>
+              ) : null}
+
+              {!configuredUsdcMint ? (
+                <p className="text-sm text-destructive">
+                  USDC mint is not configured for this environment.
+                </p>
+              ) : null}
+
+              <a
+                href={`/api/actions/pay-invoice/${invoiceId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-muted-foreground underline-offset-4 transition hover:text-foreground hover:underline"
+              >
+                View action endpoint
+                <ExternalLink className="size-4" />
+              </a>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
   );
+}
+
+function InvoiceSummaryItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function PayInvoiceSummarySkeleton() {
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <Skeleton key={index} className="h-20 w-full" />
+      ))}
+    </div>
+  );
+}
+
+function PayInvoiceDetailsSkeleton() {
+  return (
+    <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="space-y-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Skeleton key={index} className="h-16 w-full" />
+        ))}
+      </div>
+      <div className="space-y-3">
+        <Skeleton className="h-28 w-full" />
+        <Skeleton className="h-28 w-full" />
+        <Skeleton className="h-11 w-full" />
+      </div>
+    </div>
+  );
+}
+
+function truncateAddress(value: string) {
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }

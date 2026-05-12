@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SiteHeader } from "@/components/layout/site-header";
+import { PageShell } from "@/components/layout/page-shell";
 import { PaymentReceiptClient } from "@/components/pay/payment-receipt-client";
 
 type Props = {
@@ -26,9 +26,8 @@ export default async function ReceiptPage({ params, searchParams }: Props) {
     .filter(Boolean);
 
   return (
-    <div className="flex min-h-full flex-col">
-      <SiteHeader />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6">
+    <PageShell contentClassName="max-w-4xl">
+      <div className="space-y-6">
         {signature ? (
           <PaymentReceiptClient
             invoiceId={resolvedParams.invoiceId}
@@ -51,7 +50,7 @@ export default async function ReceiptPage({ params, searchParams }: Props) {
             </CardContent>
           </Card>
         )}
-      </main>
-    </div>
+      </div>
+    </PageShell>
   );
 }

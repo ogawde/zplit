@@ -1,7 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import {
+  ArrowRight,
+  Copy,
+  FolderKanban,
+  Link2,
+  ReceiptText,
+  Sparkles,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -9,6 +20,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   BPS_SCALE,
   PLATFORM_FEE_BPS,
@@ -35,7 +50,7 @@ import {
   useWallet,
 } from "@solana/wallet-adapter-react";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -293,6 +308,35 @@ export function ZplitDashboard({ initialTab }: Props) {
     memberInputs.some(
       (member) => member.wallet.trim() && member.value.trim(),
     );
+  const draftMemberCount = memberInputs.filter(
+    (member) => member.wallet.trim() || member.value.trim(),
+  ).length;
+  const draftShareTotal = memberInputs.reduce((sum, member) => {
+    const parsedValue = Number(member.value);
+    return Number.isFinite(parsedValue) ? sum + parsedValue : sum;
+  }, 0);
+  const paidInvoicesCount = displayedInvoices.filter(
+    (invoice) => invoice.statusLabel === "Paid",
+  ).length;
+  const unpaidInvoicesCount = displayedInvoices.length - paidInvoicesCount;
+  const outstandingInvoiceTotal = displayedInvoices.reduce((sum, invoice) => {
+    if (invoice.statusLabel === "Paid") return sum;
+    return sum + invoice.amount;
+  }, BigInt(0));
+
+  async function handleCopy(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied.`);
+    } catch {
+      toast.error(`Failed to copy ${label.toLowerCase()}.`);
+    }
+  }
+
+  function createPayLink(invoicePubkey: string) {
+    if (typeof window === "undefined") return `/pay/${invoicePubkey}`;
+    return `${window.location.origin}/pay/${invoicePubkey}`;
+  }
 
   async function handleCreateTeamProfile() {
     if (!publicKey) {
@@ -481,47 +525,137 @@ export function ZplitDashboard({ initialTab }: Props) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
-      <div className="mb-8 space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          Dashboard
-        </h1>
-        <p className="text-muted-foreground text-sm sm:text-base">
-          {connected && publicKey
-            ? `Connected: ${publicKey.toBase58().slice(0, 4)}…${publicKey.toBase58().slice(-4)}`
-            : "Connect your Phantom wallet to manage teams and invoices."}
-        </p>
-      </div>
+    <div className="space-y-8">
+      <section className="relative overflow-hidden rounded-[28px] border border-border/70 bg-card/90 p-6 shadow-sm backdrop-blur-sm sm:p-8">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_70%)]" />
+        <div className="relative flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl space-y-4">
+            <Badge variant="outline" className="border-primary/20 bg-primary/8 text-primary">
+              USDC team payouts
+            </Badge>
+            <div className="space-y-3">
+              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                Create invoices once. Split payouts automatically.
+              </h1>
+              <p className="text-sm text-muted-foreground sm:text-base">
+                Build reusable team profiles, issue payment links in seconds,
+                and keep invoice status visible from one clean dashboard.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button type="button" size="lg" onClick={() => setActiveTab("create")}>
+                Create invoice
+                <ArrowRight className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                onClick={() => setActiveTab("teams")}
+              >
+                Manage teams
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {connected && publicKey
+                ? `Connected wallet: ${truncateAddress(publicKey.toBase58())}`
+                : "Connect your Phantom wallet to create team profiles and publish payment links."}
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[460px]">
+            <OverviewCard
+              icon={<Users className="size-4" />}
+              label="Teams"
+              value={String(displayedTeamProfiles.length)}
+              description={
+                connected
+                  ? "Reusable payout groups"
+                  : "Connect wallet to load"
+              }
+            />
+            <OverviewCard
+              icon={<ReceiptText className="size-4" />}
+              label="Invoices"
+              value={String(displayedInvoices.length)}
+              description={
+                connected
+                  ? `${paidInvoicesCount} paid · ${unpaidInvoicesCount} unpaid`
+                  : "Connect wallet to load"
+              }
+            />
+            <OverviewCard
+              icon={<Wallet className="size-4" />}
+              label="Outstanding"
+              value={`${formatUsdcAmount(outstandingInvoiceTotal)} USDC`}
+              description="Open invoices still waiting for payment"
+            />
+          </div>
+        </div>
+      </section>
 
       <Tabs
         value={activeTab}
         onValueChange={(value) => setActiveTab(value as DashboardTab)}
         className="w-full gap-6"
       >
-        <TabsList className="grid w-full max-w-lg grid-cols-3">
+        <TabsList className="grid w-full max-w-xl grid-cols-3 rounded-2xl bg-muted/70 p-1">
           <TabsTrigger value="teams">My Team Profiles</TabsTrigger>
           <TabsTrigger value="invoices">My Invoices</TabsTrigger>
-          <TabsTrigger value="create">Create New</TabsTrigger>
+          <TabsTrigger value="create">Create Invoice</TabsTrigger>
         </TabsList>
 
         <TabsContent value="teams" className="mt-6">
-          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
             <Card className="border-border/80">
-              <CardHeader>
-                <CardTitle>Create team profile</CardTitle>
-                <CardDescription>
-                  Add a reusable payout team for future invoices.
-                </CardDescription>
+              <CardHeader className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <CardTitle>Create team profile</CardTitle>
+                    <CardDescription>
+                      Save a payout setup once so every future invoice is faster
+                      to issue.
+                    </CardDescription>
+                  </div>
+                  <StatusBadge label={capitalize(splitKind)} />
+                </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-5">
+                <div className="grid gap-3 rounded-2xl border border-border/70 bg-muted/35 p-4 sm:grid-cols-3">
+                  <SummaryStat
+                    label="Members"
+                    value={String(draftMemberCount)}
+                    hint="People included right now"
+                  />
+                  <SummaryStat
+                    label={splitKind === "percentage" ? "Allocated" : "Draft total"}
+                    value={
+                      splitKind === "percentage"
+                        ? `${draftShareTotal.toFixed(2)}%`
+                        : `${draftShareTotal.toFixed(2)} USDC`
+                    }
+                    hint={
+                      splitKind === "percentage"
+                        ? draftShareTotal === 100
+                          ? "Ready to publish"
+                          : "Needs to total 100%"
+                        : "Matches fixed invoice payouts"
+                    }
+                  />
+                  <SummaryStat
+                    label="Profile type"
+                    value={capitalize(splitKind)}
+                    hint="Choose per-team payout logic"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium" htmlFor="team-name">
                     Team name
                   </label>
-                  <input
+                  <Input
                     id="team-name"
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    placeholder="Core contributors"
+                    placeholder="Design team"
                     value={teamName}
                     onChange={(event) => setTeamName(event.target.value)}
                   />
@@ -531,27 +665,31 @@ export function ZplitDashboard({ initialTab }: Props) {
                   <label className="text-sm font-medium" htmlFor="split-kind">
                     Split type
                   </label>
-                  <select
+                  <Select
                     id="split-kind"
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     value={splitKind}
                     onChange={(event) =>
                       setSplitKind(event.target.value as SplitKind)
                     }
                   >
-                    <option value="percentage">Percentage</option>
-                    <option value="fixed">Fixed</option>
-                  </select>
-                  <p className="text-muted-foreground text-xs">
+                    <option value="percentage">Percentage split</option>
+                    <option value="fixed">Fixed payouts</option>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
                     {splitKind === "percentage"
-                      ? "Enter member shares as percentages. Totals must equal 100."
-                      : "Enter exact member payout amounts in USDC. Fixed profiles require matching invoice amounts later."}
+                      ? "Use percentages when each invoice amount can change but the member ratios stay the same."
+                      : "Use fixed payouts when every member should receive a fixed USDC amount from each invoice."}
                   </p>
                 </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">Members</p>
+                    <div>
+                      <p className="text-sm font-medium">Members</p>
+                      <p className="text-xs text-muted-foreground">
+                        Add each payout wallet and its share.
+                      </p>
+                    </div>
                     <Button
                       type="button"
                       size="sm"
@@ -570,10 +708,19 @@ export function ZplitDashboard({ initialTab }: Props) {
                   {memberInputs.map((member, index) => (
                     <div
                       key={member.id}
-                      className="rounded-md border border-border/80 p-3"
+                      className="rounded-2xl border border-border/70 bg-background/50 p-4 transition-all duration-200 hover:border-primary/25 hover:bg-background/70"
                     >
-                      <div className="mb-3 flex items-center justify-between">
-                        <p className="text-sm font-medium">Member {index + 1}</p>
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold">
+                            Member {index + 1}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {splitKind === "percentage"
+                              ? "Wallet plus percentage share"
+                              : "Wallet plus fixed USDC payout"}
+                          </p>
+                        </div>
                         <Button
                           type="button"
                           size="sm"
@@ -598,12 +745,11 @@ export function ZplitDashboard({ initialTab }: Props) {
                             className="text-sm font-medium"
                             htmlFor={`member-wallet-${member.id}`}
                           >
-                            Wallet
+                            Wallet address
                           </label>
-                          <input
+                          <Input
                             id={`member-wallet-${member.id}`}
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                            placeholder="Recipient wallet pubkey"
+                            placeholder="Paste Solana wallet address"
                             value={member.wallet}
                             onChange={(event) =>
                               setMemberInputs((current) =>
@@ -629,12 +775,11 @@ export function ZplitDashboard({ initialTab }: Props) {
                               ? "Share (%)"
                               : "Amount (USDC)"}
                           </label>
-                          <input
+                          <Input
                             id={`member-value-${member.id}`}
                             type="number"
                             min="0"
                             step="0.01"
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                             placeholder={splitKind === "percentage" ? "50" : "250"}
                             value={member.value}
                             onChange={(event) =>
@@ -658,12 +803,13 @@ export function ZplitDashboard({ initialTab }: Props) {
 
                 <Button
                   type="button"
+                  size="lg"
                   onClick={handleCreateTeamProfile}
                   disabled={!canCreateTeamProfile || isCreatingTeamProfile}
                 >
                   {isCreatingTeamProfile
                     ? "Creating team..."
-                    : "Create Team Profile"}
+                    : "Save team profile"}
                 </Button>
               </CardContent>
             </Card>
@@ -672,40 +818,38 @@ export function ZplitDashboard({ initialTab }: Props) {
               <CardHeader>
                 <CardTitle>Your team profiles</CardTitle>
                 <CardDescription>
-                  On-chain payout teams owned by this wallet.
+                  Profiles saved on-chain for the connected wallet.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {isLoadingDashboard ? (
-                  <p className="text-muted-foreground text-sm">
-                    Loading team profiles...
-                  </p>
+                  <DashboardListSkeleton />
                 ) : displayedTeamProfiles.length ? (
                   displayedTeamProfiles.map((profile) => (
                     <div
                       key={profile.publicKey.toBase58()}
-                      className="space-y-3 rounded-md border border-border/80 p-4"
+                      className="rounded-2xl border border-border/70 bg-background/50 p-4 transition-all duration-200 hover:border-primary/25 hover:bg-background/70 hover:shadow-md"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
-                          <p className="font-medium">{profile.teamName}</p>
-                          <p className="text-muted-foreground break-all text-xs">
-                            {profile.publicKey.toBase58()}
+                          <p className="font-semibold">{profile.teamName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {truncateAddress(profile.publicKey.toBase58())}
                           </p>
                         </div>
                         <StatusBadge label={capitalize(profile.splitKind)} />
                       </div>
 
-                      <div className="space-y-2">
+                      <div className="mt-4 space-y-2">
                         {profile.members.map((member, index) => (
                           <div
                             key={`${member.wallet.toBase58()}-${index}`}
-                            className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs"
+                            className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-2 text-xs"
                           >
-                            <span className="text-muted-foreground max-w-[70%] truncate">
-                              {member.wallet.toBase58()}
+                            <span className="max-w-[70%] truncate text-muted-foreground">
+                              {truncateAddress(member.wallet.toBase58())}
                             </span>
-                            <span>
+                            <span className="font-medium">
                               {profile.splitKind === "percentage"
                                 ? `${(Number(member.value) / 100).toFixed(2)}%`
                                 : `${formatUsdcAmount(member.value)} USDC`}
@@ -714,22 +858,46 @@ export function ZplitDashboard({ initialTab }: Props) {
                         ))}
                       </div>
 
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setTeamProfilePubkey(profile.publicKey.toBase58());
-                          setActiveTab("create");
-                        }}
-                      >
-                        Use in Create New
-                      </Button>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setTeamProfilePubkey(profile.publicKey.toBase58());
+                            setActiveTab("create");
+                          }}
+                        >
+                          Create invoice
+                          <ArrowRight className="size-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            void handleCopy(
+                              profile.publicKey.toBase58(),
+                              "Team profile address",
+                            )
+                          }
+                        >
+                          Copy address
+                          <Copy className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-muted-foreground text-sm">
-                    No team profiles yet. Create one to reuse split setups.
-                  </p>
+                  <EmptyState
+                    icon={<Users className="size-5" />}
+                    title="No team profiles yet"
+                    description="Create your first reusable payout team and it will appear here automatically."
+                    action={
+                      <Button type="button" onClick={() => setActiveTab("teams")}>
+                        Start with a team profile
+                      </Button>
+                    }
+                  />
                 )}
               </CardContent>
             </Card>
@@ -739,196 +907,339 @@ export function ZplitDashboard({ initialTab }: Props) {
         <TabsContent value="invoices" className="mt-6">
           <Card className="border-border/80">
             <CardHeader>
-              <CardTitle>Invoices</CardTitle>
+              <CardTitle>My invoices</CardTitle>
               <CardDescription>
-                USDC invoices linked to your selected team profile.
+                Track payment status, share pay pages, and reopen invoice links.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {isLoadingDashboard ? (
-                <p className="text-muted-foreground text-sm">
-                  Loading invoices...
-                </p>
+                <DashboardGridSkeleton />
               ) : displayedInvoices.length ? (
-                displayedInvoices.map((invoice) => {
-                  const profile =
-                    teamProfileByPubkey.get(invoice.teamProfilePubkey.toBase58()) ??
-                    null;
+                <div className="grid gap-4 xl:grid-cols-2">
+                  {displayedInvoices.map((invoice) => {
+                    const profile =
+                      teamProfileByPubkey.get(invoice.teamProfilePubkey.toBase58()) ??
+                      null;
+                    const payLink = createPayLink(invoice.publicKey.toBase58());
 
-                  return (
-                    <div
-                      key={invoice.publicKey.toBase58()}
-                      className="space-y-3 rounded-md border border-border/80 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <p className="font-medium">
-                            {invoice.description || "Untitled invoice"}
-                          </p>
-                          <p className="text-muted-foreground break-all text-xs">
-                            {invoice.publicKey.toBase58()}
-                          </p>
-                        </div>
-                        <StatusBadge label={invoice.statusLabel} />
-                      </div>
-
-                      <div className="grid gap-2 text-sm sm:grid-cols-2">
-                        <p>
-                          <span className="text-muted-foreground">Amount:</span>{" "}
-                          {formatUsdcAmount(invoice.amount)} USDC
-                        </p>
-                        <p>
-                          <span className="text-muted-foreground">Due date:</span>{" "}
-                          {new Date(invoice.dueDateUnix * 1000).toLocaleString(
-                            "en-US",
-                          )}
-                        </p>
-                        <p>
-                          <span className="text-muted-foreground">Team:</span>{" "}
-                          {profile?.teamName ?? invoice.teamProfilePubkey.toBase58()}
-                        </p>
-                        <p>
-                          <span className="text-muted-foreground">
-                            Platform fee:
-                          </span>{" "}
-                          {(invoice.platformFeeBps / 100).toFixed(2)}%
-                        </p>
-                      </div>
-
-                      <Link
-                        href={`/pay/${invoice.publicKey.toBase58()}`}
-                        className={buttonVariants({ variant: "outline" })}
+                    return (
+                      <div
+                        key={invoice.publicKey.toBase58()}
+                        className="rounded-2xl border border-border/70 bg-background/50 p-4 transition-all duration-200 hover:border-primary/25 hover:bg-background/70 hover:shadow-md"
                       >
-                        {invoice.statusLabel === "Paid"
-                          ? "View invoice"
-                          : "Open pay page"}
-                      </Link>
-                    </div>
-                  );
-                })
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="font-semibold">
+                              {invoice.description || "Untitled invoice"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {truncateAddress(invoice.publicKey.toBase58())}
+                            </p>
+                          </div>
+                          <StatusBadge label={invoice.statusLabel} />
+                        </div>
+
+                        <p className="mt-5 text-2xl font-semibold tracking-tight">
+                          {formatUsdcAmount(invoice.amount)}
+                          <span className="ml-1 text-sm font-medium text-muted-foreground">
+                            USDC
+                          </span>
+                        </p>
+
+                        <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                          <DetailItem
+                            label="Due date"
+                            value={new Date(invoice.dueDateUnix * 1000).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              },
+                            )}
+                          />
+                          <DetailItem
+                            label="Team"
+                            value={
+                              profile?.teamName ??
+                              truncateAddress(invoice.teamProfilePubkey.toBase58())
+                            }
+                          />
+                          <DetailItem
+                            label="Platform fee"
+                            value={`${(invoice.platformFeeBps / 100).toFixed(2)}%`}
+                          />
+                          <DetailItem
+                            label="Invoice seed"
+                            value={invoice.invoiceSeed.toString()}
+                          />
+                        </div>
+
+                        <div className="mt-5 flex flex-wrap gap-2">
+                          <Link
+                            href={`/pay/${invoice.publicKey.toBase58()}`}
+                            className={buttonVariants({ variant: "outline" })}
+                          >
+                            {invoice.statusLabel === "Paid"
+                              ? "View pay page"
+                              : "Open pay page"}
+                          </Link>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void handleCopy(payLink, "Pay link")}
+                          >
+                            Copy pay link
+                            <Link2 className="size-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
-                <p className="text-muted-foreground text-sm">
-                  No invoices yet. Invoices tied to team profiles owned by this
-                  wallet will appear here.
-                </p>
+                <EmptyState
+                  icon={<ReceiptText className="size-5" />}
+                  title="No invoices yet"
+                  description="Create an invoice from one of your team profiles and it will show up here with a paid or unpaid status."
+                  action={
+                    <Button type="button" onClick={() => setActiveTab("create")}>
+                      Create your first invoice
+                    </Button>
+                  }
+                />
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="create" className="mt-6">
-          <Card className="border-border/80">
-            <CardHeader>
-              <CardTitle>Create invoice</CardTitle>
-              <CardDescription>
-                Fill the form and call `create_invoice` on-chain.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-muted-foreground text-xs">
-                Only invoices linked to team profiles owned by this wallet will
-                appear in `My Invoices`.
-              </p>
+          <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <Card className="border-border/80">
+              <CardHeader>
+                <CardTitle>Create invoice</CardTitle>
+                <CardDescription>
+                  Choose a team profile, set the invoice details, and generate a
+                  payment link ready to share.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {teamProfileOptions.length ? (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="team-profile">
+                        Team profile
+                      </label>
+                      <Select
+                        id="team-profile"
+                        value={teamProfilePubkey}
+                        onChange={(event) =>
+                          setTeamProfilePubkey(event.target.value)
+                        }
+                      >
+                        <option value="">Select a team profile</option>
+                        {teamProfileOptions.map((profile) => (
+                          <option key={profile.pubkey} value={profile.pubkey}>
+                            {profile.label}
+                          </option>
+                        ))}
+                      </Select>
+                      {selectedTeamProfile ? (
+                        <p className="text-xs text-muted-foreground">
+                          Using {selectedTeamProfile.teamName} with a{" "}
+                          {selectedTeamProfile.splitKind} payout setup.
+                        </p>
+                      ) : null}
+                    </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor="team-profile">
-                  Saved team profile
-                </label>
-                <select
-                  id="team-profile"
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  value={teamProfilePubkey}
-                  onChange={(event) => setTeamProfilePubkey(event.target.value)}
-                >
-                  <option value="">Select a team profile</option>
-                  {teamProfileOptions.map((profile) => (
-                    <option key={profile.pubkey} value={profile.pubkey}>
-                      {profile.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  placeholder="Or paste team profile pubkey"
-                  value={teamProfilePubkey}
-                  onChange={(event) => setTeamProfilePubkey(event.target.value)}
-                />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium" htmlFor="description">
+                          Description
+                        </label>
+                        <Input
+                          id="description"
+                          placeholder="Website design milestone"
+                          value={description}
+                          onChange={(event) => setDescription(event.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium" htmlFor="amount">
+                          Amount (USDC)
+                        </label>
+                        <Input
+                          id="amount"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="100"
+                          value={amountUsdc}
+                          onChange={(event) => setAmountUsdc(event.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="due-date">
+                        Due date
+                      </label>
+                      <Input
+                        id="due-date"
+                        type="date"
+                        className="sm:max-w-xs"
+                        value={dueDate}
+                        onChange={(event) => setDueDate(event.target.value)}
+                      />
+                    </div>
+
+                    <Button
+                      type="button"
+                      size="lg"
+                      onClick={handleCreateInvoice}
+                      disabled={!canCreateInvoice || isCreatingInvoice}
+                    >
+                      {isCreatingInvoice ? "Creating invoice..." : "Create invoice"}
+                    </Button>
+                  </>
+                ) : (
+                  <EmptyState
+                    icon={<FolderKanban className="size-5" />}
+                    title="Create a team profile first"
+                    description="Invoices use a saved team profile so Zplit knows exactly how to split the payment."
+                    action={
+                      <Button type="button" onClick={() => setActiveTab("teams")}>
+                        Go to team profiles
+                      </Button>
+                    }
+                  />
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/80">
+              <CardHeader>
+                <CardTitle>Invoice preview</CardTitle>
+                <CardDescription>
+                  Review the team receiving payout splits before you share the
+                  pay link.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 {selectedTeamProfile ? (
-                  <p className="text-muted-foreground text-xs">
-                    Using {selectedTeamProfile.teamName} with a{" "}
-                    {selectedTeamProfile.splitKind} split.
-                  </p>
-                ) : null}
-              </div>
+                  <>
+                    <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="font-semibold">
+                            {selectedTeamProfile.teamName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {truncateAddress(
+                              selectedTeamProfile.publicKey.toBase58(),
+                            )}
+                          </p>
+                        </div>
+                        <StatusBadge
+                          label={capitalize(selectedTeamProfile.splitKind)}
+                        />
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        {selectedTeamProfile.members.map((member, index) => (
+                          <div
+                            key={`${member.wallet.toBase58()}-${index}`}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs"
+                          >
+                            <span className="max-w-[70%] truncate text-muted-foreground">
+                              {truncateAddress(member.wallet.toBase58())}
+                            </span>
+                            <span className="font-medium">
+                              {selectedTeamProfile.splitKind === "percentage"
+                                ? `${(Number(member.value) / 100).toFixed(2)}%`
+                                : `${formatUsdcAmount(member.value)} USDC`}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium" htmlFor="description">
-                    Description
-                  </label>
-                  <input
-                    id="description"
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    placeholder="Website development milestone"
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
+                    {selectedTeamProfile.splitKind === "fixed" ? (
+                      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+                        Fixed payout teams require the invoice amount to match
+                        the exact member totals after the 0.30% platform fee.
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-primary/20 bg-primary/10 p-4 text-sm text-primary">
+                        Percentage teams scale automatically with any invoice
+                        amount you create.
+                      </div>
+                    )}
+
+                    {blinkLink ? (
+                      <div className="rounded-2xl border border-primary/25 bg-primary/10 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="font-semibold text-primary">
+                              Payment link ready
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              Share this page with your client to collect the
+                              payment.
+                            </p>
+                          </div>
+                          <Sparkles className="mt-1 size-4 text-primary" />
+                        </div>
+                        <a
+                          className="mt-4 block break-all text-sm text-primary underline underline-offset-4"
+                          href={blinkLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {blinkLink}
+                        </a>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <a
+                            href={blinkLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={buttonVariants({ variant: "outline" })}
+                          >
+                            Open pay page
+                          </a>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void handleCopy(blinkLink, "Pay link")}
+                          >
+                            Copy pay link
+                            <Copy className="size-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-border/70 bg-background/50 p-4">
+                        <p className="text-sm font-semibold">What happens next</p>
+                        <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                          <li>1. The invoice is created on-chain.</li>
+                          <li>2. Zplit generates a public pay page instantly.</li>
+                          <li>3. Your client pays once and the team split happens automatically.</li>
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <EmptyState
+                    icon={<Wallet className="size-5" />}
+                    title="Select a team profile"
+                    description="Pick a payout team to preview how the invoice will be routed when it gets paid."
                   />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium" htmlFor="amount">
-                    Amount (USDC)
-                  </label>
-                  <input
-                    id="amount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    placeholder="100"
-                    value={amountUsdc}
-                    onChange={(event) => setAmountUsdc(event.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor="due-date">
-                  Due date
-                </label>
-                <input
-                  id="due-date"
-                  type="date"
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm sm:max-w-xs"
-                  value={dueDate}
-                  onChange={(event) => setDueDate(event.target.value)}
-                />
-              </div>
-
-              <Button
-                type="button"
-                onClick={handleCreateInvoice}
-                disabled={!canCreateInvoice || isCreatingInvoice}
-              >
-                {isCreatingInvoice ? "Creating..." : "Create Invoice"}
-              </Button>
-
-              {blinkLink ? (
-                <div className="rounded-md border border-primary/30 bg-primary/10 p-3 text-sm">
-                  <p className="mb-1 font-medium text-primary">
-                    Invoice created successfully
-                  </p>
-                  <a
-                    className="break-all underline"
-                    href={blinkLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {blinkLink}
-                  </a>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
@@ -936,18 +1247,121 @@ export function ZplitDashboard({ initialTab }: Props) {
 }
 
 function StatusBadge({ label }: { label: string }) {
-  const isPositive = label === "Paid" || label === "Percentage";
+  const variant =
+    label === "Paid"
+      ? "success"
+      : label === "Unpaid"
+        ? "warning"
+        : "secondary";
 
   return (
-    <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-        isPositive
-          ? "bg-primary/15 text-primary"
-          : "bg-secondary text-secondary-foreground"
-      }`}
-    >
+    <Badge variant={variant}>
       {label}
-    </span>
+    </Badge>
+  );
+}
+
+function OverviewCard({
+  icon,
+  label,
+  value,
+  description,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-background/70 p-4 shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-primary/20 hover:bg-background/85">
+      <div className="mb-4 flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+        {icon}
+      </div>
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="mt-1 text-xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-2 text-xs text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="text-base font-semibold">{value}</p>
+      <p className="text-xs text-muted-foreground">{hint}</p>
+    </div>
+  );
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function DashboardListSkeleton() {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div
+          key={index}
+          className="space-y-3 rounded-2xl border border-border/70 p-4"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+            <Skeleton className="h-6 w-20 rounded-full" />
+          </div>
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-40" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DashboardGridSkeleton() {
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div
+          key={index}
+          className="space-y-4 rounded-2xl border border-border/70 p-4"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-36" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+            <Skeleton className="h-6 w-20 rounded-full" />
+          </div>
+          <Skeleton className="h-8 w-28" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+          <Skeleton className="h-10 w-40" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1050,4 +1464,9 @@ function compareBigInts(left: bigint, right: bigint) {
 
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function truncateAddress(value: string) {
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
