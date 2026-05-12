@@ -12,15 +12,18 @@ import {
   decodeTeamProfileAccount,
   type DecodedInvoice,
   type DecodedTeamProfile,
+  formatUsdcAmount,
+  getDistributableAmount,
+  getInvoiceDueDateUnix,
+  getInvoicePlatformFeeBps,
+  getInvoiceStatusLabel,
+  getInvoiceTeamProfilePubkey,
+  getTeamProfileSplitKind,
+  isInvoicePaid,
 } from "@/lib/solana/zplit-program";
+import { getUsdcMintAddress } from "@/lib/solana/rpc";
 
 type Props = { invoiceId: string };
-type SplitType =
-  | Record<"percentage", object>
-  | Record<"Percentage", object>
-  | Record<"fixed", object>
-  | Record<"Fixed", object>
-  | Record<string, never>;
 type InvoiceRecord = DecodedInvoice & {
   team_profile_pubkey?: PublicKey;
   due_date?: bigint;
@@ -28,42 +31,12 @@ type InvoiceRecord = DecodedInvoice & {
 };
 type SplitRow = { wallet: string; amountRaw: bigint };
 
-function getFeeBps(invoice: InvoiceRecord) {
-  return Number(invoice.platformFeeBps ?? invoice.platform_fee_bps ?? 0);
-}
-
-function isPercentageSplit(splitType: unknown) {
-  if (!splitType || typeof splitType !== "object") return false;
-  return "percentage" in splitType || "Percentage" in splitType;
-}
-
-function getTeamProfilePubkey(invoice: InvoiceRecord) {
-  const pubkey = invoice.teamProfilePubkey ?? invoice.team_profile_pubkey;
-  if (!pubkey) throw new Error("Invoice has no team profile pubkey");
-  return pubkey;
-}
-
-function getDueDateUnix(invoice: InvoiceRecord) {
-  return Number(invoice.dueDate ?? invoice.due_date ?? BigInt(0));
-}
-
-function asUsdc(value: bigint) {
-  return (Number(value) / 1_000_000).toFixed(6);
-}
-
 function getSplitRows(invoice: InvoiceRecord, teamProfile: DecodedTeamProfile): SplitRow[] {
-  const total = BigInt(invoice.amount);
-  const feeBps = BigInt(getFeeBps(invoice));
-  const platformFee = (total * feeBps) / BigInt(10_000);
-  const distributable = total - platformFee;
+  const distributable = getDistributableAmount(invoice);
   const members = teamProfile.members ?? [];
   if (!members.length) return [];
 
-  const splitType =
-    (teamProfile as DecodedTeamProfile & { split_type?: SplitType }).splitType ??
-    (teamProfile as DecodedTeamProfile & { split_type?: SplitType }).split_type;
-
-  if (isPercentageSplit(splitType)) {
+  if (getTeamProfileSplitKind(teamProfile) === "percentage") {
     const rows = members.map((member) => ({
       wallet: member.wallet.toBase58(),
       amountRaw: (distributable * BigInt(member.value)) / BigInt(10_000),
@@ -88,7 +61,13 @@ export function PayInvoiceClient({ invoiceId }: Props) {
   const [teamProfile, setTeamProfile] = useState<DecodedTeamProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPaying, setIsPaying] = useState(false);
-  const [usdcMint, setUsdcMint] = useState("");
+  const configuredUsdcMint = useMemo(() => {
+    try {
+      return getUsdcMintAddress();
+    } catch {
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,7 +78,7 @@ export function PayInvoiceClient({ invoiceId }: Props) {
         const invoiceAccount = await connection.getAccountInfo(invoicePubkey, "confirmed");
         if (!invoiceAccount) throw new Error("Invoice account not found on this cluster");
         const decodedInvoice = decodeInvoiceAccount(invoiceAccount.data) as InvoiceRecord;
-        const teamProfilePubkey = getTeamProfilePubkey(decodedInvoice);
+        const teamProfilePubkey = getInvoiceTeamProfilePubkey(decodedInvoice);
         const teamProfileAccount = await connection.getAccountInfo(teamProfilePubkey, "confirmed");
         if (!teamProfileAccount) throw new Error("Team profile not found for this invoice");
         if (!cancelled) {
@@ -122,16 +101,23 @@ export function PayInvoiceClient({ invoiceId }: Props) {
     if (!invoice || !teamProfile) return [];
     return getSplitRows(invoice, teamProfile);
   }, [invoice, teamProfile]);
+  const invoiceStatusLabel = invoice ? getInvoiceStatusLabel(invoice) : "Unpaid";
+  const hasBeenPaid = invoice ? isInvoicePaid(invoice) : false;
 
   async function handlePay() {
     if (!connected || !publicKey) return toast.error("Connect your wallet first");
-    if (!usdcMint.trim()) return toast.error("Enter a USDC mint address first");
+    if (invoice && isInvoicePaid(invoice)) {
+      return toast.error("This invoice has already been paid.");
+    }
+    if (!configuredUsdcMint) {
+      return toast.error("USDC mint is not configured for this environment.");
+    }
     setIsPaying(true);
     try {
       const response = await fetch(`/api/actions/pay-invoice/${invoiceId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account: publicKey.toBase58(), payload: { usdcMint: usdcMint.trim() } }),
+        body: JSON.stringify({ account: publicKey.toBase58() }),
       });
       if (!response.ok) throw new Error(await response.text());
       const body = (await response.json()) as { transaction?: string };
@@ -163,32 +149,54 @@ export function PayInvoiceClient({ invoiceId }: Props) {
           <>
             <div className="grid gap-2 text-sm">
               <p><span className="text-muted-foreground">Description:</span> {invoice?.description || "-"}</p>
-              <p><span className="text-muted-foreground">Amount:</span> {invoice ? asUsdc(BigInt(invoice.amount)) : "0.000000"} USDC</p>
-              <p><span className="text-muted-foreground">Due date:</span> {invoice ? new Date(getDueDateUnix(invoice) * 1000).toLocaleString("en-US") : "-"}</p>
-              <p><span className="text-muted-foreground">Platform fee:</span> {invoice ? (getFeeBps(invoice) / 100).toFixed(2) : "0.00"}%</p>
+              <p><span className="text-muted-foreground">Amount:</span> {invoice ? formatUsdcAmount(BigInt(invoice.amount)) : "0.000000"} USDC</p>
+              <p><span className="text-muted-foreground">Due date:</span> {invoice ? new Date(getInvoiceDueDateUnix(invoice) * 1000).toLocaleString("en-US") : "-"}</p>
+              <p><span className="text-muted-foreground">Platform fee:</span> {invoice ? (getInvoicePlatformFeeBps(invoice) / 100).toFixed(2) : "0.00"}%</p>
+              <p><span className="text-muted-foreground">Status:</span> {invoiceStatusLabel}</p>
+              {hasBeenPaid ? (
+                <p><span className="text-muted-foreground">Paid by:</span> {invoice?.payer.toBase58()}</p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <p className="text-sm font-medium">Split breakdown</p>
               {splitRows.length ? splitRows.map((row, index) => (
                 <div key={`${row.wallet}-${index}`} className="flex items-center justify-between rounded-md border px-3 py-2 text-xs">
                   <span className="max-w-[70%] truncate text-muted-foreground">{row.wallet}</span>
-                  <span>{asUsdc(row.amountRaw)} USDC</span>
+                  <span>{formatUsdcAmount(row.amountRaw)} USDC</span>
                 </div>
               )) : <p className="text-sm text-muted-foreground">No members found in team profile.</p>}
             </div>
-            <div className="space-y-2">
-              <label htmlFor="usdc-mint" className="text-sm font-medium">USDC mint for this cluster</label>
-              <input
-                id="usdc-mint"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Enter USDC mint address"
-                value={usdcMint}
-                onChange={(event) => setUsdcMint(event.target.value)}
-              />
-            </div>
-            <Button onClick={handlePay} disabled={isPaying || isLoading}>
-              {isPaying ? "Preparing transaction..." : "Pay with Phantom"}
-            </Button>
+            {hasBeenPaid ? (
+              <div className="rounded-md border border-primary/30 bg-primary/10 p-3 text-sm">
+                <p className="font-medium text-primary">This invoice has already been paid.</p>
+                <p className="mt-1 text-muted-foreground">
+                  Payments are disabled after the invoice reaches a paid state.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Payment token</p>
+                  <div className="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    USDC
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    This environment is configured to pay invoices in USDC automatically.
+                  </p>
+                </div>
+                <Button
+                  onClick={handlePay}
+                  disabled={isPaying || isLoading || !configuredUsdcMint}
+                >
+                  {isPaying ? "Preparing transaction..." : "Pay with Phantom"}
+                </Button>
+                {!configuredUsdcMint ? (
+                  <p className="text-sm text-destructive">
+                    USDC mint is not configured for this environment.
+                  </p>
+                ) : null}
+              </>
+            )}
           </>
         )}
       </CardContent>

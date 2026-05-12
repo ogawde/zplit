@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import confetti from "canvas-confetti";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Props = {
@@ -59,9 +59,9 @@ export function PaymentReceiptClient({
           <p className="text-sm font-semibold">Recipient links</p>
           {recipients.length ? (
             <div className="space-y-2">
-              {recipients.map((wallet) => (
+              {recipients.map((wallet, index) => (
                 <a
-                  key={wallet}
+                  key={`${wallet}-${index}`}
                   href={getSolscanUrl(`account/${wallet}`, solscanClusterQuery)}
                   target="_blank"
                   rel="noreferrer"
@@ -77,12 +77,15 @@ export function PaymentReceiptClient({
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Button asChild className="sm:w-auto">
-            <Link href={`/pay/${invoiceId}`}>Back to invoice</Link>
-          </Button>
-          <Button asChild variant="outline" className="sm:w-auto">
-            <Link href="/">Go to dashboard</Link>
-          </Button>
+          <Link href="/?tab=invoices" className={buttonVariants()}>
+            Go to dashboard
+          </Link>
+          <Link
+            href="/?tab=create"
+            className={buttonVariants({ variant: "outline" })}
+          >
+            Create another invoice
+          </Link>
         </div>
       </CardContent>
     </Card>

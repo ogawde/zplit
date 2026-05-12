@@ -1,11 +1,20 @@
 import { ZplitDashboard } from "@/components/dashboard/zplit-dashboard";
 import { SiteHeader } from "@/components/layout/site-header";
 
-export default function Home() {
+type Props = {
+  searchParams: Promise<{ tab?: string }>;
+};
+
+export default async function Home({ searchParams }: Props) {
+  const resolvedSearchParams = await searchParams;
+
   return (
     <div className="flex min-h-full flex-col">
       <SiteHeader />
-      <ZplitDashboard />
+      <ZplitDashboard
+        key={resolvedSearchParams.tab ?? "teams"}
+        initialTab={resolvedSearchParams.tab}
+      />
     </div>
   );
 }

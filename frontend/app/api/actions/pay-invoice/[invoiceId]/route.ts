@@ -8,12 +8,11 @@ import {
   type DecodedInvoice,
   decodeInvoiceAccount,
   decodeTeamProfileAccount,
+  getInvoiceStatusLabel,
+  isInvoicePaid,
   zplitProgramIdl,
 } from "@/lib/solana/zplit-program";
-
-function getRpcEndpoint() {
-  return process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
-}
+import { getSolanaRpcEndpoint, getUsdcMintPublicKey } from "@/lib/solana/rpc";
 
 function getProgramId() {
   const value = process.env.NEXT_PUBLIC_ZPLIT_PROGRAM_ID;
@@ -68,7 +67,7 @@ export async function GET(
   const base = `${url.protocol}//${url.host}`;
   const params = await context.params;
   const href = `${base}/api/actions/pay-invoice/${params.invoiceId}`;
-  const connection = new Connection(getRpcEndpoint(), "confirmed");
+  const connection = new Connection(getSolanaRpcEndpoint(), "confirmed");
   let title = "Pay Zplit invoice";
   let description = "One payment. Automatic splits. Instant team payouts.";
 
@@ -81,11 +80,15 @@ export async function GET(
       const invoice = decodeInvoiceAccount(invoiceAccount.data);
       const amount = Number(parseInvoiceAmount(invoice)) / 1_000_000;
       const dueDateUnix = Number(parseInvoiceDueDate(invoice));
+      const statusLabel = getInvoiceStatusLabel(invoice);
       const dueDateLabel = Number.isFinite(dueDateUnix)
         ? new Date(dueDateUnix * 1000).toLocaleDateString("en-US")
         : "Unknown";
       title = parseInvoiceDescription(invoice) || title;
-      description = `Amount: ${amount.toFixed(2)} USDC · Due: ${dueDateLabel}`;
+      description = `Amount: ${amount.toFixed(2)} USDC · Due: ${dueDateLabel} · Status: ${statusLabel}`;
+      if (isInvoicePaid(invoice)) {
+        description = `Already paid · Amount: ${amount.toFixed(2)} USDC · Due: ${dueDateLabel}`;
+      }
     }
   } catch {}
 
@@ -114,17 +117,11 @@ export async function GET(
   });
 }
 
-type PayInvoicePayload = {
-  usdcMint: string;
-};
-
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ invoiceId: string }> },
 ) {
-  const body = (await req.json()) as ActionPostRequest & {
-    payload?: PayInvoicePayload;
-  };
+  const body = (await req.json()) as ActionPostRequest;
   const params = await context.params;
 
   const account = body.account;
@@ -135,21 +132,26 @@ export async function POST(
     });
   }
 
-  const payload = body.payload;
-  if (!payload?.usdcMint) {
-    return new NextResponse("Missing payload.usdcMint", {
-      status: 400,
-      headers: corsHeaders(),
-    });
-  }
-
-  const connection = new Connection(getRpcEndpoint(), "confirmed");
+  const connection = new Connection(getSolanaRpcEndpoint(), "confirmed");
   const programId = getProgramId();
   const instructionCoder = new BorshInstructionCoder(zplitProgramIdl as unknown as Idl);
 
   const payer = new PublicKey(account);
   const invoice = new PublicKey(params.invoiceId);
-  const usdcMint = new PublicKey(payload.usdcMint);
+  let usdcMint: PublicKey;
+  try {
+    usdcMint = getUsdcMintPublicKey();
+  } catch (error) {
+    return new NextResponse(
+      error instanceof Error
+        ? error.message
+        : "USDC mint is not configured for this environment",
+      {
+        status: 500,
+        headers: corsHeaders(),
+      },
+    );
+  }
   const invoiceAccount = await connection.getAccountInfo(invoice, "confirmed");
   if (!invoiceAccount) {
     return new NextResponse("Invoice not found", {
@@ -158,6 +160,12 @@ export async function POST(
     });
   }
   const decodedInvoice = decodeInvoiceAccount(invoiceAccount.data);
+  if (isInvoicePaid(decodedInvoice)) {
+    return new NextResponse("Invoice has already been paid", {
+      status: 409,
+      headers: corsHeaders(),
+    });
+  }
   const teamProfile = parseTeamProfilePubkey(decodedInvoice);
   const teamProfileAccount = await connection.getAccountInfo(teamProfile, "confirmed");
   if (!teamProfileAccount) {
